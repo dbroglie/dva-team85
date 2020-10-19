@@ -26,7 +26,10 @@ bills_dedup.drop_duplicates(inplace=True)
 
 # create new dataframe
 # TODO figure out what columns we want to create here, will merge with core DF later 
-cols = ['congress', 'bill_number', 'title', 'sponsor_party', 'introduced_date', 'house_passage_vote', 'senate_passage_vote', 'subjects']
+cols = ['bill_number', 'title', 'short_title​', 'sponsor_party​', 'introduced_date​', 'enacted​', 
+        'vetoed​', 'cosponsors_count​', 'cosponsors_R', 'cosponsors_D', 'cosponsors_I', 
+        'primary_subject​', 'summary_short​', 'actions_count​', 'votes_count']
+
 bill_details_df = pd.DataFrame(columns=cols)
 
 # connect to API
@@ -40,8 +43,8 @@ for index, row in bills_dedup.iterrows():
     bill_number = row['bill_number']
 
     # create request url
-    req_url = '/congress/v1/' + str(congress) + '/bills/' + bill_number + '/subjects.json'
-
+    req_url = '/congress/v1/' + str(congress) + '/bills/' + bill_number + '.json'
+    
     # connect to API
     connection = http.client.HTTPSConnection('api.propublica.org')
 
@@ -60,22 +63,42 @@ for index, row in bills_dedup.iterrows():
     info = response['results'][0]
 
     # extract data
-    title = info['title']
+    title = info['title'].replace(',', '')
+    short_title = info['short_title'].replace(',', '')
     sponsor_party = info['sponsor_party']
     introduced_date = info['introduced_date']
-    house_passage_vote = info['house_passage_vote']
-    senate_passage_vote = info['senate_passage_vote']
+    enacted = info['enacted']
+    vetoed = info['vetoed']
+    cosponsors_count = info['cosponsors']
 
-    subjects = info['subjects']
+    cosponsors_R = 0
+    cosponsors_D = 0
+    cosponsors_I = 0
 
-    subject_concat = ''
-    for i in range(len(subjects)):
-        subject_concat = subject_concat + subjects[i]['name'] + ';'
+    if cosponsors_count > 0:
+        try:
+            cosponsors_R = info['cosponsors_by_party']['R']
+        except:
+            pass
+        
+        try:
+            cosponsors_D = info['cosponsors_by_party']['D']
+        except:
+            pass
 
-    if len(subject_concat) > 0:
-        subject_concat = subject_concat[:-1]
+        try:
+            cosponsors_I = info['cosponsors_by_party']['I']
+        except:
+            pass
 
-    bill = pd.DataFrame([[congress, bill_number, title, sponsor_party, introduced_date, house_passage_vote, senate_passage_vote, subject_concat]], columns=cols)
+    primary_subject = info['primary_subject']
+    summary_short = info['summary_short'].replace(',', '')
+    actions_count = len(info['actions'])
+    votes_count = len(info['votes'])
+
+    bill = pd.DataFrame([[bill_number, title, short_title, sponsor_party, introduced_date, enacted, vetoed, cosponsors_count, 
+            cosponsors_R, cosponsors_D, cosponsors_I, primary_subject, summary_short, actions_count, votes_count]], columns=cols)
+            
     bill_details_df = bill_details_df.append(bill, ignore_index=True)
 
 # close connection
