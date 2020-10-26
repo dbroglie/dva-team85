@@ -17,10 +17,10 @@ bills_df = bills_df[bills_df['bill_number'].notnull()]
 
 # filter on single congress for testing purposes
 # TODO update this later
-bills_df = bills_df[bills_df['congress'] > 115]
 bills_dedup = bills_df.filter(['congress', 'bill_number'], axis=1)
 bills_dedup.drop_duplicates(inplace=True)
-
+# bills_dedup = bills_dedup[(bills_dedup['congress'] >= 92) & (bills_dedup['congress'] <= 100)]
+bills_dedup = bills_dedup[bills_dedup['congress'] == 98]
 
 #### retrieve additional bill data ####
 
@@ -31,6 +31,7 @@ cols = ['bill_number', 'title', 'short_title​', 'sponsor_party​', 'introduce
         'primary_subject​', 'summary_short​', 'actions_count​', 'votes_count']
 
 bill_details_df = pd.DataFrame(columns=cols)
+errors_df = pd.DataFrame(columns=['congress', 'bill_number', 'error'])
 
 # connect to API
 connection = http.client.HTTPSConnection('api.propublica.org')
@@ -48,23 +49,33 @@ for index, row in bills_dedup.iterrows():
     # connect to API
     connection = http.client.HTTPSConnection('api.propublica.org')
 
-    # make get request
-    connection.request('GET', req_url, headers=headers)
+    try:
+        # make get request
+        connection.request('GET', req_url, headers=headers)
 
-    # create json object from response
-    response = json.loads(connection.getresponse().read())
+        # create json object from response
+        response = json.loads(connection.getresponse().read())
+    except Exception as ex:
+        error = pd.DataFrame([congress, bill_number, type(ex).__name__], columns=['congress', 'bill_number', 'error'])
+        errors_df.append(error, ignore_index=True)
+        continue
 
     # check that there wasn't an error - check status on the API reponse
     if response['status'] != 'OK':
         errors = ''.join(json.dumps(response['errors']))
-        print(bill_number + ': ' + errors)
+        print(str(congress) + ', ' + bill_number + ': ' + errors)
+        # error = pd.DataFrame([congress, bill_number, 'Record not found'], columns=['congress', 'bill_number', 'error'])
+        errors_df.append({'congress': congress, 'bill_number': bill_number, 'error': 'not found'}, ignore_index=True)
+
         continue
 
     info = response['results'][0]
 
     # extract data
     title = info['title'].replace(',', '')
-    short_title = info['short_title'].replace(',', '')
+    short_title = info['short_title']
+    if short_title != None:
+        short_title = short_title.replace(',', '')
     sponsor_party = info['sponsor_party']
     introduced_date = info['introduced_date']
     enacted = info['enacted']
@@ -87,6 +98,7 @@ for index, row in bills_dedup.iterrows():
             pass
 
         try:
+            # TODO need to check what independents come through as, not populating; example S3744
             cosponsors_I = info['cosponsors_by_party']['I']
         except:
             pass
@@ -105,4 +117,5 @@ for index, row in bills_dedup.iterrows():
 connection.close()
 
 # export results to csv
-bill_details_df.to_csv("bill_details_116.csv")
+bill_details_df.to_csv("bill_details_98.csv")
+errors_df.to_csv("errors_98.csv")
